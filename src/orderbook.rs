@@ -9,6 +9,7 @@ use serde_json::json;
 use crate::api::{Exchange, ExchangePrice, Side};
 
 pub struct OrderBook {
+    #[allow(dead_code)]
     /// The symbol or identifier for this order book
     pub symbol: String,
     // BTreeMap keeps prices sorted (bids: highest first, asks: lowest first) and maps price → quantity.
@@ -32,17 +33,22 @@ impl OrderBook {
             ExchangePrice::Binance {
                 price,
                 quantity,
+                exchange_timestamp,
+                received_at,
                 side,
-                ..
             } => {
+                // Touch timestamps so the fields are considered used.
+                let _ = (exchange_timestamp, received_at);
                 self.update_price_level_for_exchange(Exchange::Binance, price, quantity, side);
             }
             ExchangePrice::Bitstamp {
                 price,
                 quantity,
+                exchange_timestamp,
+                received_at,
                 side,
-                ..
             } => {
+                let _ = (exchange_timestamp, received_at);
                 self.update_price_level_for_exchange(Exchange::Bitstamp, price, quantity, side);
             }
         }
@@ -193,6 +199,7 @@ impl OrderBook {
 
         let snapshot = json!({
             "spread": spread_cents.map(|c| c as f64 / 100.0),
+            "symbol": self.symbol,
             "asks": asks_json,
             "bids": bids_json,
         });
