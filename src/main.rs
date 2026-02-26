@@ -31,6 +31,14 @@ async fn main() {
 
     let orderbook = Arc::new(OrderBook::new(pair.as_str().to_string()));
 
+    // Start gRPC server that streams summaries from the same in-memory order book.
+    let grpc_ob = orderbook.clone();
+    let mut grpc_handle = tokio::spawn(async move {
+        if let Err(e) = api::grpc::run_grpc_server(grpc_ob).await {
+            eprintln!("gRPC server error: {e}");
+        }
+    });
+
     // How long to run the feeds before taking a snapshot.
     let run_duration = Duration::from_secs(10);
 
@@ -40,7 +48,7 @@ async fn main() {
     // Spawn Binance listener (with small sync delay so both exchanges start together)
     let binance_tx = tx.clone();
     let binance_pair = pair.clone();
-    let binance_handle = tokio::spawn(async move {
+    let mut binance_handle = tokio::spawn(async move {
         sleep(Duration::from_millis(200)).await;
         let client = api::binance::BinanceClient::new(binance_tx);
         client.listen_pair(binance_pair).await;
@@ -49,7 +57,7 @@ async fn main() {
     // Spawn Bitstamp listener (same delay as Binance)
     let bitstamp_tx = tx.clone();
     let bitstamp_pair = pair;
-    let bitstamp_handle = tokio::spawn(async move {
+    let mut bitstamp_handle = tokio::spawn(async move {
         sleep(Duration::from_millis(200)).await;
         let client = api::bitstamp::BitstampClient::new(bitstamp_tx);
         client.listen_pair(bitstamp_pair).await;
@@ -58,13 +66,6 @@ async fn main() {
     // We no longer need our own sender handle in main.
     drop(tx);
 
-    // Drive the order book updates until either:
-    // - the time window elapses, or
-    // - all senders are dropped and the channel closes.
-    let window = sleep(run_duration);
-    tokio::pin!(window);
-
-    // Also listen for Ctrl+C so we can take a snapshot on manual shutdown.
     let ctrl_c = signal::ctrl_c();
     tokio::pin!(ctrl_c);
 
@@ -81,12 +82,20 @@ async fn main() {
                     }
                 }
             }
-            _ = &mut window => {
-                // Time window elapsed.
-                break;
-            }
             _ = &mut ctrl_c => {
                 eprintln!("Ctrl+C received, shutting down and printing current book snapshot...");
+                break;
+            }
+            res = &mut binance_handle => {
+                eprintln!("Binance task finished: {:?}", res);
+                break;
+            }
+            res = &mut bitstamp_handle => {
+                eprintln!("Bitstamp task finished: {:?}", res);
+                break;
+            }
+            res = &mut grpc_handle => {
+                eprintln!("gRPC server task finished: {:?}", res);
                 break;
             }
         }
@@ -96,47 +105,6 @@ async fn main() {
     binance_handle.abort();
     bitstamp_handle.abort();
 
-    // Take a final snapshot of the combined book.
-    let top_bids = orderbook.top_bids_all_exchanges();
-    let top_asks = orderbook.top_asks_all_exchanges();
-    let spread_cents = orderbook.spread_all_exchanges();
-
-    // Convert to JSON-style output like the example.
-    let bids_json: Vec<_> = top_bids
-        .into_iter()
-        .map(|(exchange, price_cents, qty_smallest)| {
-            let exchange_str = match exchange {
-                api::Exchange::Binance => "binance",
-                api::Exchange::Bitstamp => "bitstamp",
-            };
-            serde_json::json!({
-                "exchange": exchange_str,
-                "price": price_cents as f64 / 100.0,
-                "amount": qty_smallest as f64 / 1e8, // assuming 8 decimals
-            })
-        })
-        .collect();
-
-    let asks_json: Vec<_> = top_asks
-        .into_iter()
-        .map(|(exchange, price_cents, qty_smallest)| {
-            let exchange_str = match exchange {
-                api::Exchange::Binance => "binance",
-                api::Exchange::Bitstamp => "bitstamp",
-            };
-            serde_json::json!({
-                "exchange": exchange_str,
-                "price": price_cents as f64 / 100.0,
-                "amount": qty_smallest as f64 / 1e8, // assuming 8 decimals
-            })
-        })
-        .collect();
-
-    let snapshot = serde_json::json!({
-        "spread": spread_cents.map(|c| c as f64 / 100.0),
-        "asks": asks_json,
-        "bids": bids_json,
-    });
-
-    println!("{}", serde_json::to_string_pretty(&snapshot).unwrap());
+    // Take and print a final snapshot of the combined book.
+    orderbook.print_snapshot_json();
 }

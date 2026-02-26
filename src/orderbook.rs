@@ -4,6 +4,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use serde_json::json;
 
 use crate::api::{Exchange, ExchangePrice, Side};
 
@@ -146,7 +147,7 @@ impl OrderBook {
 
     /// Spread across all exchanges: best ask price - best bid price (in cents)
     /// using the combined top-of-book from all exchanges.
-    /// Returns `None` if either side is missing or the book is crossed.
+    /// Returns `None` only if either side is missing.
     pub fn spread_all_exchanges(&self) -> Option<u64> {
         let top_bids = self.top_bids_all_exchanges();
         let top_asks = self.top_asks_all_exchanges();
@@ -154,11 +155,55 @@ impl OrderBook {
         let (_, best_bid_price, _) = top_bids.first().copied()?;
         let (_, best_ask_price, _) = top_asks.first().copied()?;
 
-        if best_ask_price > best_bid_price {
-            Some(best_ask_price - best_bid_price)
-        } else {
-            None
-        }
+        // Always return a numeric spread when both sides exist, even if crossed/locked.
+        Some(best_ask_price.saturating_sub(best_bid_price))
+    }
+}
+
+impl OrderBook {
+    /// Print a JSON summary of the current combined book: spread, top 10 bids, top 10 asks.
+    pub fn print_snapshot_json(&self) {
+        let top_bids = self.top_bids_all_exchanges();
+        let top_asks = self.top_asks_all_exchanges();
+        let spread_cents = self.spread_all_exchanges();
+
+        let bids_json: Vec<_> = top_bids
+            .into_iter()
+            .map(|(exchange, price_cents, qty_smallest)| {
+                let exchange_str = match exchange {
+                    Exchange::Binance => "binance",
+                    Exchange::Bitstamp => "bitstamp",
+                };
+                json!({
+                    "exchange": exchange_str,
+                    "price": price_cents as f64 / 100.0,
+                    "amount": qty_smallest as f64 / 1e8,
+                })
+            })
+            .collect();
+
+        let asks_json: Vec<_> = top_asks
+            .into_iter()
+            .map(|(exchange, price_cents, qty_smallest)| {
+                let exchange_str = match exchange {
+                    Exchange::Binance => "binance",
+                    Exchange::Bitstamp => "bitstamp",
+                };
+                json!({
+                    "exchange": exchange_str,
+                    "price": price_cents as f64 / 100.0,
+                    "amount": qty_smallest as f64 / 1e8,
+                })
+            })
+            .collect();
+
+        let snapshot = json!({
+            "spread": spread_cents.map(|c| c as f64 / 100.0),
+            "asks": asks_json,
+            "bids": bids_json,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&snapshot).unwrap());
     }
 }
 

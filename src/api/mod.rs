@@ -1,6 +1,6 @@
 pub mod binance;
 pub mod bitstamp;
-// pub mod grpc;
+pub mod grpc;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Exchange {
