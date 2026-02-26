@@ -92,55 +92,56 @@ impl OrderBook {
         }
     }
 
-    /// Top 10 bid levels from the combined book (price, quantity), sorted best-first.
-    pub fn top_bids_all_exchanges(&self) -> Vec<(u64, u64)> {
-        let mut combined: BTreeMap<u64, u64> = BTreeMap::new();
+    /// Top 10 bid levels from the combined book (exchange, price, quantity), sorted best-first.
+    pub fn top_bids_all_exchanges(&self) -> Vec<(Exchange, u64, u64)> {
+        let mut levels: Vec<(Exchange, u64, u64)> = Vec::new();
 
-        // Aggregate all bids from all exchanges into a single price -> total quantity map.
+        // Collect all bid levels from all exchanges.
         for entry in self.exchange_bids_price_level.iter() {
+            let exchange = *entry.key();
             let map_arc = entry.value();
             if let Ok(guard) = map_arc.read() {
                 for (&price, &qty) in guard.iter() {
                     if qty == 0 {
                         continue;
                     }
-                    *combined.entry(price).or_insert(0) += qty;
+                    levels.push((exchange, price, qty));
                 }
             }
         }
 
-        // Take up to 10 by price (highest first).
-        combined
-            .iter()
-            .rev()
-            .take(10)
-            .map(|(&price, &qty)| (price, qty))
-            .collect()
+        // Sort by price descending and take up to 10.
+        levels.sort_by(|a, b| b.1.cmp(&a.1));
+        if levels.len() > 10 {
+            levels.truncate(10);
+        }
+        levels
     }
 
-    /// Top 10 ask levels from the combined book (price, quantity), sorted best-first.
-    pub fn top_asks_all_exchanges(&self) -> Vec<(u64, u64)> {
-        let mut combined: BTreeMap<u64, u64> = BTreeMap::new();
+    /// Top 10 ask levels from the combined book (exchange, price, quantity), sorted best-first.
+    pub fn top_asks_all_exchanges(&self) -> Vec<(Exchange, u64, u64)> {
+        let mut levels: Vec<(Exchange, u64, u64)> = Vec::new();
 
-        // Aggregate all asks from all exchanges into a single price -> total quantity map.
+        // Collect all ask levels from all exchanges.
         for entry in self.exchange_asks_price_level.iter() {
+            let exchange = *entry.key();
             let map_arc = entry.value();
             if let Ok(guard) = map_arc.read() {
                 for (&price, &qty) in guard.iter() {
                     if qty == 0 {
                         continue;
                     }
-                    *combined.entry(price).or_insert(0) += qty;
+                    levels.push((exchange, price, qty));
                 }
             }
         }
 
-        // Take up to 10 by price (lowest first for asks).
-        combined
-            .iter()
-            .take(10)
-            .map(|(&price, &qty)| (price, qty))
-            .collect()
+        // Sort by price ascending and take up to 10.
+        levels.sort_by(|a, b| a.1.cmp(&b.1));
+        if levels.len() > 10 {
+            levels.truncate(10);
+        }
+        levels
     }
 
     /// Spread across all exchanges: best ask price - best bid price (in cents)
@@ -150,8 +151,8 @@ impl OrderBook {
         let top_bids = self.top_bids_all_exchanges();
         let top_asks = self.top_asks_all_exchanges();
 
-        let (best_bid_price, _) = top_bids.first().copied()?;
-        let (best_ask_price, _) = top_asks.first().copied()?;
+        let (_, best_bid_price, _) = top_bids.first().copied()?;
+        let (_, best_ask_price, _) = top_asks.first().copied()?;
 
         if best_ask_price > best_bid_price {
             Some(best_ask_price - best_bid_price)
@@ -190,8 +191,13 @@ mod tests {
         });
 
         let bids = ob.top_bids_all_exchanges();
-        assert_eq!(bids.len(), 1);
-        assert_eq!(bids[0], (100, 3));
+        assert_eq!(bids.len(), 2);
+        let total_qty: u64 = bids
+            .iter()
+            .filter(|(_, price, _)| *price == 100)
+            .map(|(_, _, qty)| *qty)
+            .sum();
+        assert_eq!(total_qty, 3);
     }
 
     #[test]
@@ -212,8 +218,8 @@ mod tests {
         let bids = ob.top_bids_all_exchanges();
         assert_eq!(bids.len(), 5);
         // Highest price first
-        assert_eq!(bids[0].0, 104);
-        assert_eq!(bids[4].0, 100);
+        assert_eq!(bids[0].1, 104);
+        assert_eq!(bids[4].1, 100);
     }
 
     #[test]
@@ -232,8 +238,8 @@ mod tests {
 
         let asks = ob.top_asks_all_exchanges();
         assert_eq!(asks.len(), 3);
-        assert_eq!(asks[0].0, 200);
-        assert_eq!(asks[2].0, 220);
+        assert_eq!(asks[0].1, 200);
+        assert_eq!(asks[2].1, 220);
     }
 
     #[test]
