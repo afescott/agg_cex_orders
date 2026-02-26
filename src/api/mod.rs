@@ -1,11 +1,11 @@
 pub mod binance;
-pub mod coinbase;
+pub mod bitstamp;
 // pub mod grpc;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Exchange {
     Binance,
-    Coinbase,
+    Bitstamp,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,12 +59,13 @@ impl TradingPair {
             .to_ascii_lowercase()
     }
 
-    /// Product ID used on Coinbase, e.g. "ETH-USD", "BTC-USD".
-    pub fn coinbase_product_id(&self) -> String {
+    /// Pair code used on Bitstamp channels, e.g. "btcusd".
+    pub fn bitstamp_pair_code(&self) -> String {
         self.raw
-            .replace('_', "-")
-            .replace('/', "-")
-            .to_ascii_uppercase()
+            .chars()
+            .filter(|c| !matches!(c, '-' | '_' | '/'))
+            .collect::<String>()
+            .to_ascii_lowercase()
     }
 }
 
@@ -77,7 +78,7 @@ pub enum ExchangePrice {
         received_at: u64,        // Timestamp when we received the message
         side: Side,
     },
-    Coinbase {
+    Bitstamp {
         price: u64,              // Price in cents
         quantity: u64,           // Quantity in smallest unit (e.g., satoshis for BTC)
         exchange_timestamp: u64, // Timestamp from the exchange

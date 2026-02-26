@@ -1,8 +1,11 @@
 mod api;
+mod orderbook;
 mod util;
 
 use std::env;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use orderbook::OrderBook;
 
 #[tokio::main]
 async fn main() {
@@ -20,6 +23,8 @@ async fn main() {
         Err(_) => return,
     };
 
+    let orderbook = Arc::new(OrderBook::new(pair.as_str().to_string()));
+
     // Create a channel to receive price updates from exchanges
     let (tx, mut rx) = mpsc::channel::<api::ExchangePrice>(1000);
 
@@ -31,21 +36,21 @@ async fn main() {
         client.listen_pair(binance_pair).await;
     });
 
-    // Spawn Coinbase listener
-    let coinbase_tx = tx.clone();
-    let coinbase_pair = pair;
-    let coinbase_handle = tokio::spawn(async move {
-        let client = api::coinbase::CoinbaseClient::new(coinbase_tx);
-        client.listen_pair(coinbase_pair).await;
+    // Spawn Bitstamp listener
+    let bitstamp_tx = tx.clone();
+    let bitstamp_pair = pair;
+    let bitstamp_handle = tokio::spawn(async move {
+        let client = api::bitstamp::BitstampClient::new(bitstamp_tx);
+        client.listen_pair(bitstamp_pair).await;
     });
 
-    // Spawn consumer of aggregated prices
+    // Spawn consumer of aggregated prices that updates the in-memory order book
+    let ob = orderbook.clone();
     let receiver_handle = tokio::spawn(async move {
         while let Some(price) = rx.recv().await {
-            println!("Received price update: {:?}", price);
-            // Handle price update - could send to gRPC API, log, etc.
+            ob.update_price_level(price);
         }
     });
 
-    let _ = tokio::join!(binance_handle, coinbase_handle, receiver_handle);
+    let _ = tokio::join!(binance_handle, bitstamp_handle, receiver_handle);
 }
