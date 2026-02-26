@@ -75,12 +75,6 @@ impl OrderBook {
                     .exchange_asks_price_level
                     .entry(exchange)
                     .or_insert_with(|| Arc::new(RwLock::new(BTreeMap::new())));
-
-                println!(
-                    "Adding ask price level: exchange={:?}, price={}, quantity={}",
-                    exchange, price, quantity
-                );
-
                 let mut guard = match (*price_level.value()).write() {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),

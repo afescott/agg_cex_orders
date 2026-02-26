@@ -25,7 +25,6 @@ impl BinanceClient {
 
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
-                println!("[Binance] Connected to {} for pair {}", url, pair.as_str());
                 let (_write, mut read) = ws_stream.split();
 
                 let mut received_any = false;
@@ -34,7 +33,6 @@ impl BinanceClient {
                     match msg {
                         Ok(Message::Text(text)) => {
                             received_any = true;
-                            println!("[Binance] raw text: {}", text);
                             // Capture timestamp immediately when message received
                             let received_at = Self::current_timestamp_ms();
                             if let Err(_e) = self.handle_message(&text, received_at).await {
@@ -42,30 +40,21 @@ impl BinanceClient {
                             }
                         }
                         Ok(Message::Ping(_data)) => {
-                            println!("[Binance] received ping");
                             // Pings can be ignored here; tungstenite handles pongs on the write side.
                         }
                         Ok(Message::Close(_)) => {
-                            println!("[Binance] websocket closed by server");
                             break;
                         }
-                        Err(e) => {
-                            println!("[Binance] websocket error: {e}");
+                        Err(_e) => {
                             break;
                         }
                         _ => {}
                     }
                 }
 
-                if !received_any {
-                    println!(
-                        "[Binance] No messages received for pair {}. Check symbol.",
-                        pair.as_str()
-                    );
-                }
+                let _ = received_any;
             }
-            Err(e) => {
-                println!("[Binance] failed to connect to {}: {e}", url);
+            Err(_e) => {
             }
         }
     }

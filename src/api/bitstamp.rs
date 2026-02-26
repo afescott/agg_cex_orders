@@ -20,11 +20,6 @@ impl BitstampClient {
     pub async fn listen_pair(&self, pair: TradingPair) {
         match connect_async(BITSTAMP_WS_URL).await {
             Ok((mut ws_stream, _)) => {
-                println!(
-                    "[Bitstamp] Connected to {} for pair {}",
-                    BITSTAMP_WS_URL,
-                    pair.as_str()
-                );
 
                 let channel = format!("order_book_{}", pair.bitstamp_pair_code());
 
@@ -35,11 +30,10 @@ impl BitstampClient {
                     }
                 });
 
-                if let Err(e) = ws_stream
+                if let Err(_e) = ws_stream
                     .send(Message::Text(subscribe_msg.to_string()))
                     .await
                 {
-                    println!("[Bitstamp] failed to send subscription: {e}");
                     return;
                 }
 
@@ -50,38 +44,25 @@ impl BitstampClient {
                 while let Some(msg) = read.next().await {
                     match msg {
                         Ok(Message::Text(text)) => {
-                            println!("[Bitstamp] raw text: {}", text);
                             let received_at = Self::current_timestamp_ms();
-                            if let Err(e) = self.handle_message(&text, received_at).await {
-                                println!("[Bitstamp] error handling message: {e}");
-                            } else {
+                            if self.handle_message(&text, received_at).await.is_ok() {
                                 received_any = true;
                             }
                         }
-                        Ok(Message::Ping(_data)) => {
-                            println!("[Bitstamp] received ping");
-                        }
+                        Ok(Message::Ping(_data)) => {}
                         Ok(Message::Close(_)) => {
-                            println!("[Bitstamp] websocket closed by server");
                             break;
                         }
-                        Err(e) => {
-                            println!("[Bitstamp] websocket error: {e}");
+                        Err(_e) => {
                             break;
                         }
                         _ => {}
                     }
                 }
 
-                if !received_any {
-                    println!(
-                        "[Bitstamp] No order book messages received for pair {}. Check symbol or channel.",
-                        pair.as_str()
-                    );
-                }
+                let _ = received_any;
             }
-            Err(e) => {
-                println!("[Bitstamp] failed to connect to {}: {e}", BITSTAMP_WS_URL);
+            Err(_e) => {
             }
         }
     }

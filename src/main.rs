@@ -39,9 +39,6 @@ async fn main() {
         }
     });
 
-    // How long to run the feeds before taking a snapshot.
-    let run_duration = Duration::from_secs(10);
-
     // Create a channel to receive price updates from exchanges
     let (tx, mut rx) = mpsc::channel::<api::ExchangePrice>(1000);
 
@@ -82,22 +79,10 @@ async fn main() {
                     }
                 }
             }
-            _ = &mut ctrl_c => {
-                eprintln!("Ctrl+C received, shutting down and printing current book snapshot...");
-                break;
-            }
-            res = &mut binance_handle => {
-                eprintln!("Binance task finished: {:?}", res);
-                break;
-            }
-            res = &mut bitstamp_handle => {
-                eprintln!("Bitstamp task finished: {:?}", res);
-                break;
-            }
-            res = &mut grpc_handle => {
-                eprintln!("gRPC server task finished: {:?}", res);
-                break;
-            }
+            _ = &mut ctrl_c => break,
+            _ = &mut binance_handle => break,
+            _ = &mut bitstamp_handle => break,
+            _ = &mut grpc_handle => break,
         }
     }
 
