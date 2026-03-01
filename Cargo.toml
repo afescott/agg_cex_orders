@@ -4,15 +4,25 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+console-subscriber = "0.5"
 dashmap = "6.1.0"
-tokio = { version = "1.40", features = ["full"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["native-tls", "connect"] }
 futures-util = "0.3"
+prost = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { version = "1.40", features = ["full", "tracing"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["native-tls", "connect"] }
 tonic = { version = "0.12", features = ["transport"] }
-prost = "0.13"
+tokio-console = "0.1"
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-flame = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tokio-stream = "0.1"
+
 
 [build-dependencies]
 tonic-build = "0.12"
+
+# Enable debuginfo in release so CPU flamegraph (cargo flamegraph / perf) has symbols.
+[profile.release]
+debug = true

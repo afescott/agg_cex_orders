@@ -11,6 +11,8 @@ use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() {
+    let _flame_guard = util::setup_config();
+
     // Read trading pair from env, defaulting to a common pair when missing/invalid.
     let pair = match env::var("TRADING_PAIR") {
         Ok(s) => match api::TradingPair::from_str(&s) {
@@ -71,6 +73,7 @@ async fn main() {
             maybe_price = rx.recv() => {
                 match maybe_price {
                     Some(price) => {
+                        let _span = tracing::info_span!("update_book", exchange = %price.exchange_name()).entered();
                         orderbook.update_price_level(price);
                     }
                     None => {

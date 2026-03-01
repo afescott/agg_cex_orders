@@ -86,3 +86,13 @@ pub enum ExchangePrice {
         side: Side,
     },
 }
+
+impl ExchangePrice {
+    /// Exchange name for tracing/logging.
+    pub fn exchange_name(&self) -> &'static str {
+        match self {
+            ExchangePrice::Binance { .. } => "binance",
+            ExchangePrice::Bitstamp { .. } => "bitstamp",
+        }
+    }
+}

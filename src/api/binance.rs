@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
+use tracing::instrument;
 
 use crate::api::{ExchangePrice, Side, TradingPair};
 use crate::util::{parse_price_cents, parse_quantity_smallest_unit};
@@ -54,8 +55,7 @@ impl BinanceClient {
 
                 let _ = received_any;
             }
-            Err(_e) => {
-            }
+            Err(_e) => {}
         }
     }
 
@@ -67,6 +67,8 @@ impl BinanceClient {
             .as_millis() as u64
     }
 
+    /// Parse one depth message and send price levels to the aggregator.
+    #[instrument(skip(self, text), fields(exchange = "binance"))]
     async fn handle_message(
         &self,
         text: &str,
@@ -77,8 +79,10 @@ impl BinanceClient {
             return Err("Message too large".into());
         }
 
-        // Parse depth update data
-        let depth: serde_json::Value = serde_json::from_str(text)?;
+        let depth = {
+            let _span = tracing::info_span!("parse_json").entered();
+            serde_json::from_str::<serde_json::Value>(text)?
+        };
 
         // Binance depth stream format:
         // - Snapshot (REST): { "lastUpdateId": ..., "bids": [[price, qty], ...], "asks": [[price, qty], ...] }
@@ -93,10 +97,7 @@ impl BinanceClient {
             return Ok(());
         }
 
-        let exchange_timestamp = depth
-            .get("E")
-            .and_then(|e| e.as_u64())
-            .unwrap_or(0);
+        let exchange_timestamp = depth.get("E").and_then(|e| e.as_u64()).unwrap_or(0);
 
         // Process bids (buy side). Prefer WS keys "b", fall back to "bids".
         if let Some(bids) = depth
@@ -110,8 +111,13 @@ impl BinanceClient {
                         if let (Some(price_str), Some(qty_str)) =
                             (bid_array[0].as_str(), bid_array[1].as_str())
                         {
-                            let price_opt = parse_price_cents(price_str);
-                            let quantity_opt = parse_quantity_smallest_unit(qty_str, 8); // BTC has 8 decimals
+                            let (price_opt, quantity_opt) = {
+                                let _span = tracing::info_span!("process_bids").entered();
+                                (
+                                    parse_price_cents(price_str),
+                                    parse_quantity_smallest_unit(qty_str, 8), // BTC has 8 decimals
+                                )
+                            };
 
                             if let (Some(price), Some(quantity)) = (price_opt, quantity_opt) {
                                 let _ = self
@@ -143,8 +149,13 @@ impl BinanceClient {
                         if let (Some(price_str), Some(qty_str)) =
                             (ask_array[0].as_str(), ask_array[1].as_str())
                         {
-                            let price_opt = parse_price_cents(price_str);
-                            let quantity_opt = parse_quantity_smallest_unit(qty_str, 8);
+                            let (price_opt, quantity_opt) = {
+                                let _span = tracing::info_span!("process_asks").entered();
+                                (
+                                    parse_price_cents(price_str),
+                                    parse_quantity_smallest_unit(qty_str, 8),
+                                )
+                            };
 
                             if let (Some(price), Some(quantity)) = (price_opt, quantity_opt) {
                                 let _ = self
@@ -167,4 +178,3 @@ impl BinanceClient {
         Ok(())
     }
 }
-

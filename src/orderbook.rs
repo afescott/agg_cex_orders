@@ -5,6 +5,7 @@ use std::{
 
 use dashmap::DashMap;
 use serde_json::json;
+use tracing::instrument;
 
 use crate::api::{Exchange, ExchangePrice, Side};
 
@@ -28,7 +29,9 @@ impl OrderBook {
     }
 
     /// Update the per-exchange price levels from a single exchange-level price update.
+    #[instrument(level = "trace", skip(self, order))]
     pub fn update_price_level(&self, order: ExchangePrice) {
+        tracing::Span::current().record("exchange", order.exchange_name());
         match order {
             ExchangePrice::Binance {
                 price,
@@ -61,6 +64,7 @@ impl OrderBook {
         quantity: u64,
         side: Side,
     ) {
+        let _span = tracing::info_span!("write_level").entered();
         match side {
             Side::Buy => {
                 let price_level = self

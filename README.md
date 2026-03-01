@@ -15,3 +15,10 @@ Stream the gRPC order book summaries:
   orderbook.OrderbookAggregator/BookSummary
 ```
 
+Flamegraph for span-based monitoring
+
+```bash
+cargo flamegraph           
+```
+
+

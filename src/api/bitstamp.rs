@@ -1,6 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tracing::instrument;
 
 use crate::api::{ExchangePrice, Side, TradingPair};
 use crate::util::{parse_price_cents, parse_quantity_smallest_unit};
@@ -75,6 +76,8 @@ impl BitstampClient {
             .as_millis() as u64
     }
 
+    /// Parse one order book data message and send price levels to the aggregator.
+    #[instrument(skip(self, text), fields(exchange = "bitstamp"))]
     async fn handle_message(
         &self,
         text: &str,
@@ -84,7 +87,10 @@ impl BitstampClient {
             return Err("Message too large".into());
         }
 
-        let v: serde_json::Value = serde_json::from_str(text)?;
+        let v = {
+            let _span = tracing::info_span!("parse_json").entered();
+            serde_json::from_str::<serde_json::Value>(text)?
+        };
 
         let event = match v.get("event").and_then(|e| e.as_str()) {
             Some(e) => e,
@@ -118,9 +124,13 @@ impl BitstampClient {
                             if size_str == "0" {
                                 continue;
                             }
-                            let price_opt = parse_price_cents(price_str);
-                            let quantity_opt = parse_quantity_smallest_unit(size_str, 8);
-
+                            let (price_opt, quantity_opt) = {
+                                let _span = tracing::info_span!("process_bids").entered();
+                                (
+                                    parse_price_cents(price_str),
+                                    parse_quantity_smallest_unit(size_str, 8),
+                                )
+                            };
                             if let (Some(price), Some(quantity)) = (price_opt, quantity_opt) {
                                 let _ = self
                                     .tx
@@ -150,9 +160,13 @@ impl BitstampClient {
                             if size_str == "0" {
                                 continue;
                             }
-                            let price_opt = parse_price_cents(price_str);
-                            let quantity_opt = parse_quantity_smallest_unit(size_str, 8);
-
+                            let (price_opt, quantity_opt) = {
+                                let _span = tracing::info_span!("process_asks").entered();
+                                (
+                                    parse_price_cents(price_str),
+                                    parse_quantity_smallest_unit(size_str, 8),
+                                )
+                            };
                             if let (Some(price), Some(quantity)) = (price_opt, quantity_opt) {
                                 let _ = self
                                     .tx
