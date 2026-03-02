@@ -57,6 +57,7 @@ impl OrderBook {
         }
     }
 
+    /// Helper to update the appropriate price level map for a given exchange and side.
     fn update_price_level_for_exchange(
         &self,
         exchange: Exchange,
@@ -162,9 +163,6 @@ impl OrderBook {
         // Always return a numeric spread when both sides exist, even if crossed/locked.
         Some(best_ask_price.saturating_sub(best_bid_price))
     }
-}
-
-impl OrderBook {
     /// Print a JSON summary of the current combined book: spread, top 10 bids, top 10 asks.
     pub fn print_snapshot_json(&self) {
         let top_bids = self.top_bids_all_exchanges();
@@ -211,7 +209,6 @@ impl OrderBook {
         println!("{}", serde_json::to_string_pretty(&snapshot).unwrap());
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,5 +311,30 @@ mod tests {
 
         let spread = ob.spread_all_exchanges();
         assert_eq!(spread, Some(10));
+    }
+
+    #[test]
+    fn spread_clamped_to_zero_for_crossed_book() {
+        let ob = ob();
+
+        // Best bid above best ask: 110 bid, 100 ask.
+        ob.update_price_level(ExchangePrice::Binance {
+            price: 110,
+            quantity: 1,
+            exchange_timestamp: 0,
+            received_at: 0,
+            side: Side::Buy,
+        });
+        ob.update_price_level(ExchangePrice::Binance {
+            price: 100,
+            quantity: 1,
+            exchange_timestamp: 0,
+            received_at: 0,
+            side: Side::Sell,
+        });
+
+        // We never expose a negative spread; crossed books are reported as 0.
+        let spread = ob.spread_all_exchanges();
+        assert_eq!(spread, Some(0));
     }
 }

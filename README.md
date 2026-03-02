@@ -21,4 +21,6 @@ Flamegraph for span-based monitoring
 cargo flamegraph           
 ```
 
+For live task‑level insight, you can also run `tokio-console` in another terminal while the app is running to see which tasks are busy, idle, or blocked on I/O.
+
 
